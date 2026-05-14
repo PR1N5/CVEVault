@@ -1,6 +1,6 @@
-from database import get_db_connection
-from nvd_client import search_cves_by_keyword
 import ui_state
+
+from database import get_db_connection
 
 
 def get_cve_sort_key(cve_id):
@@ -26,6 +26,7 @@ def get_newest_cves(limit):
             title,
             severity,
             cvss_score,
+            published_date,
             source_url
         FROM cves
     """)
@@ -44,9 +45,59 @@ def get_newest_cves(limit):
     return results[:limit]
 
 
+def search_local_cves(keyword):
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+
+    like = f"%{keyword}%"
+
+    cursor.execute("""
+        SELECT
+            cve_id,
+            title,
+            severity,
+            cvss_score,
+            published_date,
+            source_url
+        FROM cves
+        WHERE
+            cve_id LIKE %s
+            OR title LIKE %s
+            OR description LIKE %s
+            OR technologies LIKE %s
+    """, (like, like, like, like))
+
+    results = cursor.fetchall()
+
+    cursor.close()
+    conn.close()
+
+    results = sorted(
+        results,
+        key=lambda cve: get_cve_sort_key(cve["cve_id"]),
+        reverse=True
+    )
+
+    return results
+
+
+def print_cves(results):
+    if not results:
+        print("No CVEs found.")
+        return
+
+    for cve in results:
+        print(
+            f"{cve['cve_id']} | "
+            f"{cve.get('title', 'NO TITLE')} | "
+            f"{cve.get('severity', 'UNKNOWN')} | "
+            f"{cve.get('cvss_score', 'N/A')} | "
+            f"{cve.get('source_url', 'NO URL')}"
+        )
+
+
 def run_search_loop():
     while True:
-        # user_input = input("\nSearch technology > ").strip()
         prompt = (
             f"\n[SYNC STATUS] {ui_state.sync_status}\n"
             "Search technology > "
@@ -79,47 +130,16 @@ def run_search_loop():
                     continue
 
                 newest_cves = get_newest_cves(limit)
-
-                if not newest_cves:
-                    print("No CVEs found.")
-                    continue
-
-                print(f"\nNewest {limit} CVEs:\n")
-
-                for cve in newest_cves:
-                    print(
-                        f"{cve['cve_id']} | "
-                        f"{cve.get('title', 'NO TITLE')} | "
-                        f"{cve['severity']} | "
-                        f"{cve['cvss_score']} | "
-                        f"{cve['source_url']}"
-                    )
+                print_cves(newest_cves)
 
                 continue
 
             #
-            # normal keyword search
+            # local DB search
             #
-            results = search_cves_by_keyword(user_input)
+            results = search_local_cves(user_input)
 
-            results = sorted(
-                results,
-                key=lambda cve: get_cve_sort_key(cve["cve_id"]),
-                reverse=True
-            )
-
-            if not results:
-                print("No CVEs found.")
-                continue
-
-            for cve in results:
-                print(
-                    f"{cve['cve_id']} | "
-                    f"{cve.get('title', 'NO TITLE')} | "
-                    f"{cve['severity']} | "
-                    f"{cve['cvss_score']} | "
-                    f"{cve['source_url']}"
-                )
+            print_cves(results)
 
         except Exception as error:
             print(f"Search error: {error}")

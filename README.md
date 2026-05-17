@@ -5,7 +5,7 @@ CVEVault is a tool designed to collect and store CVEs from 1999 to the present d
 * CVE-ID
 * Technology/vendor/product names
 * Latest published CVEs
-
+* CVSS criticality
 
 ## Setup
 
@@ -57,6 +57,20 @@ Example:
 .new 10
 ```
 
+Search by CVSS criticality:
+
+```bash
+.crit <gt|gte|lt|lte|eq> <SCORE> <LIMIT>
+```
+
+Examples:
+
+```bash
+.crit gt 8 10
+.crit gte 9 25
+.crit lt 5 20
+```
+
 Search by CVE-ID:
 
 ```bash
@@ -69,4 +83,10 @@ Search by keyword/technology:
 nginx
 openssl
 linux kernel
+```
+
+Show all available commands:
+
+```bash
+.help
 ```

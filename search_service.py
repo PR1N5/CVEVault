@@ -2,6 +2,99 @@ import ui_state
 
 from database import get_db_connection
 
+def show_help():
+    print("""
+Available commands:
+
+.new <LIMIT>
+    Show the newest CVEs stored in the database.
+
+    Example:
+        .new 10
+
+
+.crit <gt|gte|lt|lte|eq> <SCORE> <LIMIT>
+    Search CVEs by CVSS score.
+
+    Operators:
+        gt   -> greater than
+        gte  -> greater than or equal
+        lt   -> lower than
+        lte  -> lower than or equal
+        eq   -> equal
+
+    Examples:
+        .crit gt 8 10
+        .crit gte 9 25
+        .crit lt 5 20
+
+
+<CVE-ID>
+    Search by CVE identifier.
+
+    Example:
+        CVE-2026-31431
+
+
+<KEYWORD>
+    Search by keyword, technology, vendor or product.
+
+    Examples:
+        nginx
+        openssl
+        linux kernel
+
+
+.help
+    Show this help menu.
+
+
+exit
+quit
+    Exit the application.
+""")
+
+def search_by_criticality(operator, score, limit):
+    allowed_operators = {
+        "gt": ">",
+        "gte": ">=",
+        "lt": "<",
+        "lte": "<=",
+        "eq": "=",
+    }
+
+    if operator not in allowed_operators:
+        raise ValueError("Invalid operator. Use: gt, gte, lt, lte, eq")
+
+    sql_operator = allowed_operators[operator]
+
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+
+    query = f"""
+        SELECT
+            cve_id,
+            title,
+            severity,
+            cvss_score,
+            published_date,
+            source_url
+        FROM cves
+        WHERE cvss_score IS NOT NULL
+          AND cvss_score {sql_operator} %s
+        ORDER BY
+            CAST(SUBSTRING_INDEX(SUBSTRING_INDEX(cve_id, '-', 2), '-', -1) AS UNSIGNED) DESC,
+            CAST(SUBSTRING_INDEX(cve_id, '-', -1) AS UNSIGNED) DESC
+        LIMIT %s
+    """
+
+    cursor.execute(query, (score, limit))
+    results = cursor.fetchall()
+
+    cursor.close()
+    conn.close()
+
+    return results
 
 def get_cve_sort_key(cve_id):
     try:
@@ -112,6 +205,10 @@ def run_search_loop():
         if not user_input:
             continue
 
+        if user_input == ".help":
+            show_help()
+            continue
+
         try:
             #
             # .new 10
@@ -131,6 +228,27 @@ def run_search_loop():
 
                 newest_cves = get_newest_cves(limit)
                 print_cves(newest_cves)
+
+                continue
+
+            if user_input.startswith(".crit"):
+                parts = user_input.split()
+
+                if len(parts) != 4:
+                    print("Usage: .crit <gt|gte|lt|lte|eq> <score> <limit>")
+                    continue
+
+                operator = parts[1].lower()
+
+                try:
+                    score = float(parts[2])
+                    limit = int(parts[3])
+                except ValueError:
+                    print("Invalid score.")
+                    continue
+
+                results = search_by_criticality(operator, score, limit)
+                print_cves(results)
 
                 continue
 
